@@ -265,7 +265,8 @@ export default function Home() {
                 .replace(/\*(.*?)\*/g, '<em>$1</em>')
                 .replace(/`(.*?)`/g, '<code>$1</code>')
                 .replace(/^- (.*)/gm, '<li>$1</li>')
-                .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+                .replace(/(<\/li>\n<li>)/g, '</li><li>')
+                .replace(/(<li>)/g, '<ul><li>').replace(/(<\/li>)(?!<li>)/g, '</li></ul>')
                 .replace(/\n/g, '<br/>')
             }} />
           )}
@@ -317,7 +318,8 @@ export default function Home() {
                   .replace(/\*(.*?)\*/g, '<em>$1</em>')
                   .replace(/`(.*?)`/g, '<code>$1</code>')
                   .replace(/^- (.*)/gm, '<li>$1</li>')
-                  .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+                  .replace(/(<\/li>\n<li>)/g, '</li><li>')
+                  .replace(/(<li>)/g, '<ul><li>').replace(/(<\/li>)(?!<li>)/g, '</li></ul>')
                   .replace(/\n/g, '<br/>')
               }} />
             </div>
