@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+from datetime import date
 from dotenv import load_dotenv
 
 from langchain_chroma import Chroma
@@ -9,11 +10,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
 app = FastAPI(title="Textbook RAG API")
+
+# --- Session query log (in-memory, resets on server restart) ---
+# Stores {"date": date, "queries": [...]}
+_session: dict = {"date": date.today(), "queries": []}
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +44,14 @@ def format_docs(docs):
         chapter = doc.metadata.get("chapter", "?")
         formatted.append(f"[Page {page}, {chapter}]\n{doc.page_content}")
     return "\n\n---\n\n".join(formatted)
+
+def log_query(query: str):
+    """Append query to today's session log, resetting if date has changed."""
+    today = date.today()
+    if _session["date"] != today:
+        _session["date"] = today
+        _session["queries"] = []
+    _session["queries"].append(query)
 
 class ChatRequest(BaseModel):
     query: str
@@ -75,9 +87,9 @@ async def chat_endpoint(req: ChatRequest):
         docs = retriever.invoke(req.query)
         context = format_docs(docs)
 
-        # Build chain using LCEL
         chain = prompt | llm | StrOutputParser()
         answer = chain.invoke({"context": context, "question": req.query})
+        log_query(req.query)
         
         sources = []
         for doc in docs:
@@ -117,9 +129,36 @@ async def notes_endpoint(req: NotesRequest):
         
         chain = prompt | llm | StrOutputParser()
         notes = chain.invoke({"context": context, "topic": req.topic})
-        
+
         return {
             "notes": notes
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/summary")
+async def summary_endpoint():
+    """Return a summary of repeated concepts from today's session queries."""
+    queries = _session.get("queries", [])
+    if len(queries) < 2:
+        return {"summary": None, "query_count": len(queries)}
+
+    try:
+        llm = get_llm()
+        query_list = "\n".join(f"- {q}" for q in queries)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system",
+             "You are a study coach reviewing a student's study session. "
+             "Given the list of questions the student asked today, identify the medical concepts, topics, or themes "
+             "they returned to repeatedly. Group related questions together. "
+             "Format your response as a concise markdown list with a header for each repeated concept/theme, "
+             "and bullet points showing which questions relate to it. "
+             "Only include concepts that appeared more than once (directly or thematically). "
+             "End with a brief 1-2 sentence recommendation on what to review."),
+            ("human", "Here are all the questions I asked today:\n{queries}\n\nWhat concepts did I ask about repeatedly?")
+        ])
+        chain = prompt | llm | StrOutputParser()
+        summary = chain.invoke({"queries": query_list})
+        return {"summary": summary, "query_count": len(queries)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

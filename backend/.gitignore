@@ -14,8 +14,8 @@ build/
 # Environment
 .env
 
-# ChromaDB
-chroma_db/
+# ChromaDB is committed to repo for deployment
+# chroma_db/
 
 # IDEs
 .vscode/

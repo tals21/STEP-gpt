@@ -1,0 +1,3 @@
+*.sqlite3 !text !filter !merge !diff
+*.bin !text !filter !merge !diff
+*.pickle !text !filter !merge !diff

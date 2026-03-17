@@ -17,11 +17,14 @@ interface Message {
 }
 
 export default function Home() {
-  const [mode, setMode] = useState<'chat' | 'notes'>('chat');
+  const [mode, setMode] = useState<'chat' | 'notes' | 'summary'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [notes, setNotes] = useState('');
+  const [summary, setSummary] = useState('');
+  const [summaryCount, setSummaryCount] = useState(0);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -36,6 +39,26 @@ export default function Home() {
       textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
     }
   }, [input]);
+
+  const fetchSummary = async () => {
+    setSummaryLoading(true);
+    setSummary('');
+    try {
+      const res = await fetch(`${API_URL}/summary`);
+      const data = await res.json();
+      setSummaryCount(data.query_count);
+      setSummary(data.summary || '');
+    } catch {
+      setSummary('Sorry, something went wrong fetching your summary.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const handleModeChange = (newMode: 'chat' | 'notes' | 'summary') => {
+    setMode(newMode);
+    if (newMode === 'summary') fetchSummary();
+  };
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -124,15 +147,21 @@ export default function Home() {
         <div className="mode-toggle">
           <button
             className={`mode-btn ${mode === 'chat' ? 'active' : ''}`}
-            onClick={() => setMode('chat')}
+            onClick={() => handleModeChange('chat')}
           >
             💬 Chat
           </button>
           <button
             className={`mode-btn ${mode === 'notes' ? 'active' : ''}`}
-            onClick={() => setMode('notes')}
+            onClick={() => handleModeChange('notes')}
           >
             📝 Notes
+          </button>
+          <button
+            className={`mode-btn ${mode === 'summary' ? 'active' : ''}`}
+            onClick={() => handleModeChange('summary')}
+          >
+            📊 Summary
           </button>
         </div>
       </header>
@@ -243,8 +272,61 @@ export default function Home() {
         </div>
       )}
 
-      {/* Input Area */}
-      <div className="input-area">
+      {/* Summary Mode */}
+      {mode === 'summary' && (
+        <div className="notes-content">
+          {summaryLoading && (
+            <div className="notes-rendered">
+              <div className="loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Analyzing your session...</p>
+            </div>
+          )}
+
+          {!summaryLoading && summaryCount < 2 && (
+            <div className="welcome">
+              <div className="welcome-icon">📊</div>
+              <h2>No session data yet</h2>
+              <p>
+                Ask at least 2 questions in Chat mode and then come back here to see
+                which concepts you kept returning to.
+              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+                {summaryCount === 1 ? '1 question asked so far today.' : '0 questions asked so far today.'}
+              </p>
+            </div>
+          )}
+
+          {!summaryLoading && summary && (
+            <div className="notes-rendered">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Based on {summaryCount} question{summaryCount !== 1 ? 's' : ''} asked today
+                </span>
+                <button className="suggestion-chip" onClick={fetchSummary} style={{ fontSize: 12 }}>
+                  🔄 Refresh
+                </button>
+              </div>
+              <div dangerouslySetInnerHTML={{
+                __html: summary
+                  .replace(/### (.*)/g, '<h3>$1</h3>')
+                  .replace(/## (.*)/g, '<h2>$1</h2>')
+                  .replace(/# (.*)/g, '<h1>$1</h1>')
+                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  .replace(/`(.*?)`/g, '<code>$1</code>')
+                  .replace(/^- (.*)/gm, '<li>$1</li>')
+                  .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+                  .replace(/\n/g, '<br/>')
+              }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Input Area — hidden in summary mode */}
+      <div className="input-area" style={{ display: mode === 'summary' ? 'none' : undefined }}>
         <div className="input-wrapper">
           <textarea
             ref={textareaRef}
